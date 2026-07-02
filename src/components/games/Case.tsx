@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
-import { resolveGame, usePlayer } from '@/lib/player';
+import { resolveBet, usePlayer } from '@/lib/player';
 import { toast } from 'sonner';
 
 const PRIZES = [
@@ -21,12 +21,17 @@ export default function Case() {
   const [result, setResult] = useState<typeof PRIZES[number] | null>(null);
   const [reel, setReel] = useState<string[]>(PRIZES.map((p) => p.emoji));
 
-  const open = () => {
-    if (CASE_PRICE > player.balance) return toast.error('Недостаточно Plazma Coin');
+  const open = async () => {
+    if (!player || CASE_PRICE > player.balance) return toast.error('Недостаточно Plazma Coin');
     if (rolling) return;
     setRolling(true);
     setResult(null);
-    resolveGame('case', CASE_PRICE, 0);
+    try {
+      await resolveBet(CASE_PRICE, 0);
+    } catch (e) {
+      setRolling(false);
+      return toast.error((e as Error).message);
+    }
 
     const total = PRIZES.reduce((s, p) => s + p.weight, 0);
     let r = Math.random() * total;
@@ -43,7 +48,7 @@ export default function Case() {
         setResult(won);
         setRolling(false);
         const payout = Math.round(CASE_PRICE * won.mult);
-        if (payout > 0) { resolveGame('case', 0, payout); toast.success(`Выпало ${won.label}! +${payout}`); }
+        if (payout > 0) { resolveBet(0, payout); toast.success(`Выпало ${won.label}! +${payout}`); }
         else toast.error('Пусто. Не повезло');
       }
     }, 90);

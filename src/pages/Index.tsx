@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { usePlayer, addBalance, type GameKey } from '@/lib/player';
+import {
+  usePlayer, useAuthLoading, fetchMe, logout, purchase, type GameKey,
+} from '@/lib/player';
 import GameDialog from '@/components/GameDialog';
+import Auth from '@/components/Auth';
 import { Catalog, Profile, Tournaments, Quests, Vip, Admin } from '@/components/sections/Sections';
 import { toast } from 'sonner';
 
@@ -30,9 +33,18 @@ const SHOP = [
 
 export default function Index() {
   const p = usePlayer();
+  const authLoading = useAuthLoading();
   const [tab, setTab] = useState<Tab>('home');
   const [game, setGame] = useState<GameKey | null>(null);
   const [shop, setShop] = useState(false);
+
+  useEffect(() => { fetchMe(); }, []);
+
+  if (authLoading) {
+    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Загрузка...</div>;
+  }
+  if (!p) return <Auth />;
+
   const nav = NAV.filter((n) => !n.adminOnly || p.role === 'admin');
 
   return (
@@ -49,6 +61,10 @@ export default function Index() {
               <span className="text-lg">💠</span>
               <span className="font-display text-accent">{p.balance.toLocaleString()}</span>
               <Icon name="Plus" size={14} className="text-muted-foreground" />
+            </button>
+            <button onClick={logout} title="Выйти"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary transition hover:text-destructive">
+              <Icon name="LogOut" size={16} />
             </button>
           </div>
         </div>
@@ -85,7 +101,7 @@ export default function Index() {
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             {SHOP.map((s) => (
-              <button key={s.plazma} onClick={() => { addBalance(s.plazma); toast.success(`+${s.plazma} Plazma`); setShop(false); }}
+              <button key={s.plazma} onClick={async () => { await purchase(s.plazma); toast.success(`+${s.plazma} Plazma`); setShop(false); }}
                 className="rounded-2xl glass p-4 text-center transition hover:neon-border hover:-translate-y-1">
                 <div className="text-3xl">💠</div>
                 <div className="font-display text-xl text-accent">{s.plazma.toLocaleString()}</div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
-import { resolveGame, usePlayer } from '@/lib/player';
+import { resolveBet, usePlayer } from '@/lib/player';
 import { toast } from 'sonner';
 
 const SIZE = 25;
@@ -21,16 +21,20 @@ export default function Miner() {
     : 1;
   const currentWin = Math.round(bet * multiplier);
 
-  const start = () => {
-    if (bet > player.balance) return toast.error('Недостаточно Plazma Coin');
+  const start = async () => {
+    if (!player || bet > player.balance) return toast.error('Недостаточно Plazma Coin');
     if (bet < 1) return toast.error('Ставка минимум 1');
+    try {
+      await resolveBet(bet, 0);
+    } catch (e) {
+      return toast.error((e as Error).message);
+    }
     const pos = new Set<number>();
     while (pos.size < mines) pos.add(Math.floor(Math.random() * SIZE));
     setMinePositions(pos);
     setOpened(new Set());
     setLost(false);
     setActive(true);
-    resolveGame('miner', bet, 0);
   };
 
   const openCell = (i: number) => {
@@ -52,7 +56,7 @@ export default function Miner() {
     const mult = +(Math.pow(SIZE / (SIZE - mines), count) * 0.97).toFixed(2);
     const payout = Math.round(bet * mult);
     setActive(false);
-    resolveGame('miner', 0, payout);
+    resolveBet(0, payout);
     toast.success(`Забрали ${payout} Plazma (x${mult})`);
     setMinePositions(new Set());
   };

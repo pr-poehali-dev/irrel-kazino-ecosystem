@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
-import { resolveGame, usePlayer } from '@/lib/player';
+import { resolveBet, usePlayer } from '@/lib/player';
 import { toast } from 'sonner';
 
 export default function Crash() {
@@ -14,15 +14,19 @@ export default function Crash() {
   const crashPoint = useRef(0);
   const raf = useRef<number>();
 
-  const start = () => {
-    if (bet > player.balance) return toast.error('Недостаточно Plazma Coin');
+  const start = async () => {
+    if (!player || bet > player.balance) return toast.error('Недостаточно Plazma Coin');
     if (running) return;
+    try {
+      await resolveBet(bet, 0);
+    } catch (e) {
+      return toast.error((e as Error).message);
+    }
     crashPoint.current = +(0.9 + Math.pow(Math.random(), -0.35)).toFixed(2);
     setMult(1);
     setCrashed(false);
     setCashedAt(null);
     setRunning(true);
-    resolveGame('crash', bet, 0);
     const startTime = performance.now();
     const tick = (now: number) => {
       const t = (now - startTime) / 1000;
@@ -46,7 +50,7 @@ export default function Crash() {
     const payout = Math.round(bet * mult);
     setCashedAt(mult);
     setRunning(false);
-    resolveGame('crash', 0, payout);
+    resolveBet(0, payout);
     toast.success(`Забрали ${payout} Plazma (x${mult})`);
   };
 

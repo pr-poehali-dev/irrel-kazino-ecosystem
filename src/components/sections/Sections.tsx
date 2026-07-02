@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
-  usePlayer, setState, addBalance, xpForLevel, GAME_LABELS, type GameKey,
+  usePlayer, xpForLevel, claimReward, fetchLeaderboard,
+  adminUsers, adminGrant, adminSetRole, type GameKey,
 } from '@/lib/player';
 import { toast } from 'sonner';
 
@@ -57,13 +58,14 @@ export function Catalog({ onPlay }: { onPlay: (g: GameKey) => void }) {
 
 export function Profile() {
   const p = usePlayer();
+  if (!p) return null;
   const winrate = p.totalBets ? Math.round((p.totalWins / p.totalBets) * 100) : 0;
   const stats = [
     { label: 'Ставок', value: p.totalBets, icon: 'Dices' },
     { label: 'Побед', value: p.totalWins, icon: 'Trophy' },
     { label: 'Винрейт', value: `${winrate}%`, icon: 'Percent' },
-    { label: 'Оборот', value: `${p.totalWagered}`, icon: 'Coins' },
-    { label: 'Макс. выигрыш', value: p.biggestWin, icon: 'Flame' },
+    { label: 'Оборот', value: `${Math.round(p.totalWagered)}`, icon: 'Coins' },
+    { label: 'Макс. выигрыш', value: Math.round(p.biggestWin), icon: 'Flame' },
     { label: 'Уровень', value: p.level, icon: 'Star' },
   ];
   return (
@@ -73,6 +75,7 @@ export function Profile() {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/20 text-3xl neon-border">🚀</div>
           <div className="flex-1">
             <div className="font-display text-2xl">{p.name}</div>
+            <div className="text-sm text-muted-foreground">{p.email}</div>
             <div className="text-sm text-muted-foreground">Уровень {p.level} · {p.role === 'admin' ? 'Администратор' : 'Игрок'}</div>
           </div>
         </div>
@@ -92,37 +95,14 @@ export function Profile() {
           </div>
         ))}
       </div>
-      <div>
-        <h3 className="mb-3 font-display text-xl">История операций</h3>
-        <div className="space-y-2">
-          {p.history.length === 0 && <p className="text-sm text-muted-foreground">Пока пусто — сыграйте первую партию.</p>}
-          {p.history.slice(0, 12).map((h) => {
-            const net = h.payout - h.bet;
-            return (
-              <div key={h.id} className="flex items-center justify-between rounded-xl glass px-4 py-2.5 text-sm">
-                <span>{GAME_LABELS[h.game]}</span>
-                <span className={net > 0 ? 'text-accent' : net < 0 ? 'text-destructive' : 'text-muted-foreground'}>
-                  {net > 0 ? '+' : ''}{net} Plazma
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
 
-const BOTS = [
-  { name: 'NeoStorm', score: 184200 }, { name: 'PlazmaKing', score: 152800 },
-  { name: 'CyberFox', score: 98400 }, { name: 'VoidRunner', score: 71200 },
-  { name: 'GlitchQueen', score: 54600 },
-];
-
 export function Tournaments() {
   const p = usePlayer();
-  const board = [...BOTS, { name: p.name + ' (вы)', score: p.totalWagered }]
-    .sort((a, b) => b.score - a.score);
+  const [board, setBoard] = useState<{ name: string; score: number }[]>([]);
+  useEffect(() => { fetchLeaderboard().then(setBoard); }, []);
   return (
     <div className="space-y-5">
       <div className="rounded-2xl glass p-6">
@@ -130,18 +110,22 @@ export function Tournaments() {
           <Icon name="Trophy" size={28} className="text-accent" />
           <div>
             <div className="font-display text-xl">Еженедельный турнир</div>
-            <div className="text-sm text-muted-foreground">Призовой фонд 500 000 Plazma · осталось 3 дня</div>
+            <div className="text-sm text-muted-foreground">Рейтинг по обороту Plazma · обновляется в реальном времени</div>
           </div>
         </div>
       </div>
       <div className="space-y-2">
-        {board.map((b, i) => (
-          <div key={b.name} className={`flex items-center gap-4 rounded-xl px-4 py-3 ${b.name.includes('(вы)') ? 'glass neon-border' : 'glass'}`}>
-            <span className={`w-8 font-display text-lg ${i < 3 ? 'text-accent neon-text-cyan' : 'text-muted-foreground'}`}>#{i + 1}</span>
-            <span className="flex-1">{b.name}</span>
-            <span className="font-display">{b.score.toLocaleString()}</span>
-          </div>
-        ))}
+        {board.length === 0 && <p className="text-sm text-muted-foreground">Пока нет данных — сыграйте первую партию.</p>}
+        {board.map((b, i) => {
+          const isMe = p && b.name === p.name;
+          return (
+            <div key={i} className={`flex items-center gap-4 rounded-xl px-4 py-3 ${isMe ? 'glass neon-border' : 'glass'}`}>
+              <span className={`w-8 font-display text-lg ${i < 3 ? 'text-accent neon-text-cyan' : 'text-muted-foreground'}`}>#{i + 1}</span>
+              <span className="flex-1">{b.name}{isMe ? ' (вы)' : ''}</span>
+              <span className="font-display">{Math.round(b.score).toLocaleString()}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -156,8 +140,9 @@ const QUESTS = [
 export function Quests() {
   const p = usePlayer();
   const [claimed, setClaimed] = useState<number[]>([]);
-  const claim = (id: number, reward: number) => {
-    addBalance(reward);
+  if (!p) return null;
+  const claim = async (id: number, reward: number) => {
+    await claimReward(reward);
     setClaimed((c) => [...c, id]);
     toast.success(`Награда получена: +${reward} Plazma`);
   };
@@ -176,7 +161,7 @@ export function Quests() {
             </div>
             <Progress value={(cur / q.goal) * 100} className="mb-3 h-2" />
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{cur} / {q.goal}</span>
+              <span>{Math.round(cur)} / {q.goal}</span>
               <Button size="sm" disabled={!done || isClaimed} onClick={() => claim(q.id, q.reward)}>
                 {isClaimed ? 'Получено' : 'Забрать'}
               </Button>
@@ -198,6 +183,7 @@ const VIP_TIERS = [
 
 export function Vip() {
   const p = usePlayer();
+  if (!p) return null;
   return (
     <div className="space-y-4">
       <h3 className="font-display text-xl">VIP-уровни и лояльность</h3>
@@ -218,42 +204,62 @@ export function Vip() {
   );
 }
 
+type AdminUser = { id: number; email: string; name: string; role: string; balance: number; totalBets: number };
+
 export function Admin() {
   const p = usePlayer();
-  const [grant, setGrant] = useState('');
-  if (p.role !== 'admin') {
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [grantAmount, setGrantAmount] = useState('');
+
+  const reload = () => adminUsers().then(setUsers).catch(() => {});
+  useEffect(() => { if (p?.role === 'admin') reload(); }, [p?.role]);
+
+  if (!p || p.role !== 'admin') {
     return <div className="rounded-2xl glass p-8 text-center text-muted-foreground">Доступ только для администраторов.</div>;
   }
+
+  const grant = async (id: number) => {
+    const amt = +grantAmount || 0;
+    if (!amt) return toast.error('Введите сумму');
+    await adminGrant(id, amt);
+    toast.success(`Начислено ${amt} Plazma`);
+    reload();
+  };
+
+  const toggleRole = async (u: AdminUser) => {
+    const newRole = u.role === 'admin' ? 'user' : 'admin';
+    await adminSetRole(u.id, newRole);
+    toast.success(newRole === 'admin' ? 'Выданы права админа' : 'Права сняты');
+    reload();
+  };
+
   return (
     <div className="space-y-5">
       <h3 className="font-display text-xl">Административная панель</h3>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { l: 'Всего ставок', v: p.totalBets }, { l: 'Оборот', v: p.totalWagered },
-          { l: 'Баланс', v: p.balance }, { l: 'Уровень', v: p.level },
-        ].map((s) => (
-          <div key={s.l} className="rounded-2xl glass p-4">
-            <div className="font-display text-2xl text-accent">{s.v}</div>
-            <div className="text-xs text-muted-foreground">{s.l}</div>
+      <div className="rounded-2xl glass p-5">
+        <label className="mb-3 block text-sm text-muted-foreground">
+          Сумма для начисления (Plazma)
+          <input type="number" value={grantAmount} onChange={(e) => setGrantAmount(e.target.value)}
+            placeholder="Например 500"
+            className="mt-1 w-full rounded-lg bg-secondary px-3 py-2 outline-none" />
+        </label>
+        <p className="text-xs text-muted-foreground">Нажмите «Начислить» напротив игрока, чтобы пополнить его баланс.</p>
+      </div>
+      <div className="space-y-2">
+        {users.map((u) => (
+          <div key={u.id} className="flex flex-wrap items-center gap-3 rounded-xl glass px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-display">{u.name}
+                {u.role === 'admin' && <span className="ml-2 rounded bg-primary/30 px-2 py-0.5 text-xs text-accent">admin</span>}
+              </div>
+              <div className="truncate text-xs text-muted-foreground">{u.email} · {Math.round(u.balance)} Plazma · {u.totalBets} ставок</div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => grant(u.id)}>Начислить</Button>
+            <Button size="sm" variant="secondary" onClick={() => toggleRole(u)}>
+              {u.role === 'admin' ? 'Снять админа' : 'Сделать админом'}
+            </Button>
           </div>
         ))}
-      </div>
-      <div className="rounded-2xl glass p-5 space-y-3">
-        <div className="font-display">Начислить Plazma игроку</div>
-        <div className="flex gap-2">
-          <input placeholder="Сумма" type="number"
-            className="flex-1 rounded-lg bg-secondary px-3 py-2 outline-none"
-            onChange={(e) => setGrant(e.target.value)} />
-          <Button onClick={() => { addBalance(+grant || 0); toast.success('Начислено'); }}>Начислить</Button>
-        </div>
-      </div>
-      <div className="rounded-2xl glass p-5 space-y-3">
-        <div className="font-display">Управление ролью</div>
-        <p className="text-sm text-muted-foreground">Текущая роль: {p.role}. Вы можете выдать/забрать права администратора.</p>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => { setState((s) => ({ ...s, role: 'admin' })); toast.success('Права администратора выданы'); }}>Сделать админом</Button>
-          <Button variant="secondary" onClick={() => { setState((s) => ({ ...s, role: 'user' })); toast('Права сняты'); }}>Снять права</Button>
-        </div>
       </div>
     </div>
   );

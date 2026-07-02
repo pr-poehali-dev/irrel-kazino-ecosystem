@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
-import { resolveGame, usePlayer } from '@/lib/player';
+import { resolveBet, usePlayer } from '@/lib/player';
 import { toast } from 'sonner';
 
 const ROWS = 8;
@@ -15,12 +15,17 @@ export default function MineDrop() {
   const [ballRow, setBallRow] = useState(0);
   const [landed, setLanded] = useState<number | null>(null);
 
-  const drop = () => {
-    if (bet > player.balance) return toast.error('Недостаточно Plazma Coin');
+  const drop = async () => {
+    if (!player || bet > player.balance) return toast.error('Недостаточно Plazma Coin');
     if (dropping) return;
     setDropping(true);
     setLanded(null);
-    resolveGame('minedrop', bet, 0);
+    try {
+      await resolveBet(bet, 0);
+    } catch (e) {
+      setDropping(false);
+      return toast.error((e as Error).message);
+    }
 
     let pos = 0;
     setBallCol(0);
@@ -38,7 +43,7 @@ export default function MineDrop() {
         const payout = Math.round(bet * mult);
         setLanded(slot);
         setDropping(false);
-        resolveGame('minedrop', 0, payout);
+        resolveBet(0, payout);
         if (mult >= 1) toast.success(`x${mult} — забрали ${payout} Plazma`);
         else toast.error(`x${mult} — вернули ${payout}`);
       }

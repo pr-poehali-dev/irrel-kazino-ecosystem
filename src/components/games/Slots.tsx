@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
-import { resolveGame, usePlayer } from '@/lib/player';
+import { resolveBet, usePlayer } from '@/lib/player';
 import { toast } from 'sonner';
 
 const SYMBOLS = ['7️⃣', '🍒', '🍋', '🔔', '💎', '⭐'];
@@ -13,11 +13,16 @@ export default function Slots() {
   const [reels, setReels] = useState(['7️⃣', '💎', '⭐']);
   const [spinning, setSpinning] = useState(false);
 
-  const spin = () => {
-    if (bet > player.balance) return toast.error('Недостаточно Plazma Coin');
+  const spin = async () => {
+    if (!player || bet > player.balance) return toast.error('Недостаточно Plazma Coin');
     if (spinning) return;
     setSpinning(true);
-    resolveGame('slots', bet, 0);
+    try {
+      await resolveBet(bet, 0);
+    } catch (e) {
+      setSpinning(false);
+      return toast.error((e as Error).message);
+    }
     let ticks = 0;
     const iv = setInterval(() => {
       setReels([
@@ -45,7 +50,7 @@ export default function Slots() {
         } else {
           toast.error('Мимо');
         }
-        if (payout > 0) resolveGame('slots', 0, payout);
+        if (payout > 0) resolveBet(0, payout);
       }
     }, 80);
   };
